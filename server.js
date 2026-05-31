@@ -1,38 +1,35 @@
 const express = require('express');
-const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'buecher.json');
 
-// SQLite on Render Disk (mount path: /data)
-// Locally falls back to ./buecher.db
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'buecher.db');
-const db = new Database(DB_PATH);
+// ── Simple JSON database ──────────────────────────────────────────────────────
+function loadDb() {
+  if (fs.existsSync(DB_PATH)) {
+    try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); } catch(e) {}
+  }
+  return { books: [], nextId: 1 };
+}
 
-// ── Schema ────────────────────────────────────────────────────────────────────
-db.exec(`
-  CREATE TABLE IF NOT EXISTS books (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    author    TEXT    NOT NULL,
-    title     TEXT    NOT NULL,
-    list      TEXT    NOT NULL DEFAULT 'wishlist',
-    note      TEXT    NOT NULL DEFAULT '',
-    desc      TEXT    NOT NULL DEFAULT '',
-    created_at TEXT   NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+function saveDb(data) {
+  const dir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
 
-// Seed default books if table is empty
-const count = db.prepare('SELECT COUNT(*) as n FROM books').get();
-if (count.n === 0) {
-  const insert = db.prepare(
-    'INSERT INTO books (author, title, list) VALUES (?, ?, ?)'
-  );
-  const seedMany = db.transaction((books) => {
-    for (const b of books) insert.run(b.author, b.title, b.list);
-  });
-  seedMany(DEFAULT_BOOKS);
+function getDb() {
+  if (!getDb._cache) getDb._cache = loadDb();
+  // Seed if empty
+  if (getDb._cache.books.length === 0) {
+    for (const b of DEFAULT_BOOKS) {
+      getDb._cache.books.push({ id: getDb._cache.nextId++, ...b, note: '', desc: '' });
+    }
+    saveDb(getDb._cache);
+  }
+  return getDb._cache;
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -41,42 +38,45 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Book API ──────────────────────────────────────────────────────────────────
 app.get('/api/books', (req, res) => {
-  const books = db.prepare('SELECT * FROM books ORDER BY list, id').all();
-  res.json(books);
+  res.json(getDb().books);
 });
 
 app.post('/api/books', (req, res) => {
   const { author, title, list, note } = req.body;
   if (!author || !title) return res.status(400).json({ error: 'author and title required' });
-  const result = db.prepare(
-    'INSERT INTO books (author, title, list, note) VALUES (?, ?, ?, ?)'
-  ).run(author, title, list || 'wishlist', note || '');
-  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(result.lastInsertRowid);
+  const data = getDb();
+  const book = { id: data.nextId++, author, title, list: list || 'wishlist', note: note || '', desc: '' };
+  data.books.push(book);
+  saveDb(data);
   res.json(book);
 });
 
 app.put('/api/books/:id', (req, res) => {
+  const id = parseInt(req.params.id);
   const { author, title, list, note, desc } = req.body;
-  db.prepare(
-    'UPDATE books SET author=?, title=?, list=?, note=?, desc=? WHERE id=?'
-  ).run(author, title, list, note ?? '', desc ?? '', req.params.id);
-  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(req.params.id);
+  const data = getDb();
+  const book = data.books.find(b => b.id === id);
+  if (!book) return res.status(404).json({ error: 'not found' });
+  Object.assign(book, { author, title, list, note: note ?? '', desc: desc ?? '' });
+  saveDb(data);
   res.json(book);
 });
 
 app.delete('/api/books/:id', (req, res) => {
-  db.prepare('DELETE FROM books WHERE id = ?').run(req.params.id);
+  const id = parseInt(req.params.id);
+  const data = getDb();
+  data.books = data.books.filter(b => b.id !== id);
+  saveDb(data);
   res.json({ ok: true });
 });
 
 // ── Anthropic Proxy ───────────────────────────────────────────────────────────
-// The API key stays on the server, never exposed to the browser
 app.post('/api/describe', async (req, res) => {
   const { author, title } = req.body;
   if (!author || !title) return res.status(400).json({ error: 'author and title required' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured on server' });
+  if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
