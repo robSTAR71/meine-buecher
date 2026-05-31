@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meine Bücher</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+  header { background: #16213e; padding: 16px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #0f3460; flex-wrap: wrap; }
+  header h1 { font-size: 1.4rem; font-weight: 700; color: #e94560; }
+  header span { font-size: 0.85rem; color: #888; }
+  .header-actions { margin-left: auto; display: flex; gap: 8px; }
+  .btn { padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: all 0.15s; }
+  .btn-primary { background: #e94560; color: white; }
+  .btn-primary:hover { background: #c73652; }
+  .btn-ghost { background: transparent; color: #aaa; border: 1px solid #333; }
+  .btn-ghost:hover { background: #2a2a3e; color: #e0e0e0; }
+  .search-bar { padding: 10px 24px; background: #16213e; border-bottom: 1px solid #0f3460; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .search-bar input { flex: 1; min-width: 180px; background: #0f3460; border: 1px solid #1a4a7a; color: #e0e0e0; padding: 7px 12px; border-radius: 8px; font-size: 0.85rem; }
+  .search-bar input:focus { outline: none; border-color: #e94560; }
+  .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab { padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; cursor: pointer; border: 1px solid #333; background: transparent; color: #aaa; transition: all 0.15s; white-space: nowrap; }
+  .tab.active { background: #e94560; color: white; border-color: #e94560; }
+  .board { display: flex; gap: 16px; padding: 20px 24px; overflow-x: auto; align-items: flex-start; }
+  .column { background: #16213e; border-radius: 12px; min-width: 240px; max-width: 260px; flex-shrink: 0; border: 1px solid #0f3460; }
+  .col-header { padding: 14px 14px 10px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #0f3460; }
+  .col-title { font-size: 0.9rem; font-weight: 700; flex: 1; }
+  .col-count { background: #0f3460; color: #e94560; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+  .col-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; max-height: 65vh; overflow-y: auto; }
+  .col-body::-webkit-scrollbar { width: 4px; }
+  .col-body::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 2px; }
+  .book-card { background: #0f3460; border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
+  .book-card:hover { border-color: #e94560; background: #1a4a7a; }
+  .book-author { font-size: 0.7rem; color: #e94560; font-weight: 600; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .book-title { font-size: 0.83rem; font-weight: 600; line-height: 1.3; }
+  .book-actions { display: none; gap: 4px; margin-top: 8px; }
+  .book-card:hover .book-actions { display: flex; }
+  .add-card-btn { padding: 8px 12px; display: flex; align-items: center; gap: 6px; color: #888; font-size: 0.8rem; cursor: pointer; border-radius: 8px; transition: all 0.15s; border: 1px dashed #333; background: transparent; width: 100%; margin: 4px 0; }
+  .add-card-btn:hover { color: #e0e0e0; border-color: #e94560; background: #1a2a3e; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+  .modal { background: #16213e; border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; border: 1px solid #0f3460; }
+  .modal h2 { font-size: 1.1rem; margin-bottom: 18px; color: #e94560; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { font-size: 0.8rem; color: #aaa; margin-bottom: 5px; display: block; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; background: #0f3460; border: 1px solid #1a4a7a; color: #e0e0e0; padding: 8px 12px; border-radius: 8px; font-size: 0.85rem; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #e94560; }
+  .form-group textarea { resize: vertical; min-height: 70px; font-family: inherit; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .stats-bar { display: flex; gap: 20px; padding: 10px 24px; background: #16213e; border-bottom: 1px solid #0f3460; font-size: 0.78rem; color: #888; flex-wrap: wrap; }
+  .stat { display: flex; align-items: center; gap: 5px; }
+  .stat strong { color: #e94560; font-size: 0.95rem; }
+  .hidden { display: none !important; }
+  .delete-btn { background: #c73652; color: white; padding: 3px 8px; border-radius: 5px; border: none; cursor: pointer; font-size: 0.72rem; }
+  .move-btn { background: #0f3460; color: #aaa; padding: 3px 8px; border-radius: 5px; border: 1px solid #333; cursor: pointer; font-size: 0.72rem; }
+  .move-btn:hover { background: #1a4a7a; color: #e0e0e0; }
+  .note-tag { font-size: 0.68rem; background: #1a4a7a; color: #aaa; padding: 2px 6px; border-radius: 4px; margin-top: 5px; display: inline-block; margin-right: 3px; }
+  #loadingOverlay { position: fixed; inset: 0; background: #1a1a2e; display: flex; align-items: center; justify-content: center; z-index: 999; font-size: 1rem; color: #888; }
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay">📚 Bücher werden geladen…</div>
+
+<header>
+  <div>📚</div>
+  <h1>Meine Bücher</h1>
+  <span id="totalCount"></span>
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="openAddModal()">+ Buch hinzufügen</button>
+    <button class="btn btn-ghost" onclick="exportCSV()">↓ Export CSV</button>
+  </div>
+</header>
+<div class="stats-bar" id="statsBar"></div>
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="Autor oder Titel suchen…" oninput="renderBoard()">
+  <div class="filter-tabs" id="filterTabs"></div>
+</div>
+<div class="board" id="board"></div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay hidden" id="detailOverlay">
+  <div class="modal" style="max-width:500px">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+      <div style="flex:1">
+        <div id="detailAuthor" style="font-size:0.75rem;color:#e94560;font-weight:700;text-transform:uppercase;margin-bottom:4px"></div>
+        <div id="detailTitle" style="font-size:1.15rem;font-weight:700;line-height:1.3"></div>
+        <div id="detailList" style="font-size:0.75rem;color:#888;margin-top:4px"></div>
+      </div>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.8rem" onclick="closeDetailModal()">✕</button>
+    </div>
+    <div id="descriptionBox" style="background:#0f3460;border-radius:10px;padding:14px;min-height:80px;font-size:0.85rem;line-height:1.6;color:#ccc">
+      <span id="descLoading" style="color:#888;font-style:italic">⏳ Beschreibung wird geladen…</span>
+      <span id="descText" class="hidden"></span>
+    </div>
+    <div id="detailNote" style="margin-top:12px" class="hidden">
+      <div style="font-size:0.75rem;color:#aaa;margin-bottom:4px">Meine Notiz</div>
+      <div id="detailNoteText" style="background:#0f3460;border-radius:8px;padding:10px;font-size:0.83rem;color:#ddd"></div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="openEditFromDetail()">✏️ Bearbeiten</button>
+      <button class="btn btn-ghost" onclick="closeDetailModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit/Add Modal -->
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">Buch hinzufügen</h2>
+    <div class="form-group">
+      <label>Autor</label>
+      <input type="text" id="fAuthor" placeholder="z.B. GLATTAUER, Daniel">
+    </div>
+    <div class="form-group">
+      <label>Titel</label>
+      <input type="text" id="fTitle" placeholder="z.B. Gut gegen Nordwind">
+    </div>
+    <div class="form-group">
+      <label>Liste</label>
+      <select id="fList"></select>
+    </div>
+    <div class="form-group">
+      <label>Notiz (optional)</label>
+      <textarea id="fNote" placeholder="Gedanken, Bewertung…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveBook()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LISTS = [
+  { id: 'wishlist', label: 'Wunschbücher',        color: '#7c3aed' },
+  { id: 'reading',  label: '… is being read',      color: '#d97706' },
+  { id: 'y2026',    label: 'Gelesene Bücher 2026', color: '#0891b2' },
+  { id: 'y2025',    label: 'Gelesene Bücher 2025', color: '#059669' },
+  { id: 'y2024',    label: 'Gelesene Bücher 2024', color: '#2563eb' },
+  { id: 'y2023',    label: 'Gelesene Bücher 2023', color: '#dc2626' },
+];
+
+let books = [];
+let editingId = null;
+let detailBookId = null;
+let activeFilter = 'all';
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  books = await apiFetch('/api/books');
+  document.getElementById('loadingOverlay').classList.add('hidden');
+  renderAll();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  document.getElementById('totalCount').textContent = books.length + ' Bücher gesamt';
+  renderStats(); renderFilterTabs(); renderBoard();
+}
+
+function renderStats() {
+  const read    = books.filter(b => b.list.startsWith('y')).length;
+  const reading = books.filter(b => b.list === 'reading').length;
+  const wish    = books.filter(b => b.list === 'wishlist').length;
+  document.getElementById('statsBar').innerHTML =
+    `<div class="stat"><strong>${read}</strong> gelesen</div>
+     <div class="stat"><strong>${reading}</strong> am Lesen</div>
+     <div class="stat"><strong>${wish}</strong> Wunschliste</div>`;
+}
+
+function renderFilterTabs() {
+  const tabs = [{ id: 'all', label: 'Alle' }, ...LISTS];
+  document.getElementById('filterTabs').innerHTML = tabs.map(t =>
+    `<div class="tab ${activeFilter === t.id ? 'active' : ''}" onclick="setFilter('${t.id}')">${t.label}</div>`
+  ).join('');
+}
+
+function setFilter(id) { activeFilter = id; renderAll(); }
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderBoard() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const listsToShow = activeFilter === 'all' ? LISTS : LISTS.filter(l => l.id === activeFilter);
+  document.getElementById('board').innerHTML = listsToShow.map(list => {
+    let items = books.filter(b => b.list === list.id);
+    if (q) items = items.filter(b =>
+      b.author.toLowerCase().includes(q) || b.title.toLowerCase().includes(q));
+    const cards = items.map(b => `
+      <div class="book-card" onclick="openDetailModal(${b.id})">
+        <div class="book-author">${esc(b.author)}</div>
+        <div class="book-title">${esc(b.title)}</div>
+        ${b.note ? '<span class="note-tag">💬 Notiz</span>' : ''}
+        ${b.desc ? '<span class="note-tag" style="background:#0a3020;color:#4ade80">📖 Beschreibung</span>' : ''}
+        <div class="book-actions">
+          <button class="move-btn" onclick="event.stopPropagation();openEditModal(${b.id})">✏️</button>
+          <button class="delete-btn" onclick="event.stopPropagation();deleteBook(${b.id})">✕</button>
+        </div>
+      </div>`).join('');
+    return `<div class="column">
+      <div class="col-header">
+        <div class="col-title" style="color:${list.color}">${list.label}</div>
+        <div class="col-count">${items.length}</div>
+      </div>
+      <div class="col-body">
+        ${cards}
+        <button class="add-card-btn" onclick="openAddModal('${list.id}')">+ Buch hinzufügen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Detail modal ──────────────────────────────────────────────────────────────
+async function openDetailModal(id) {
+  const b = books.find(x => x.id === id);
+  if (!b) return;
+  detailBookId = id;
+
+  const listLabel = LISTS.find(l => l.id === b.list)?.label || b.list;
+  document.getElementById('detailAuthor').textContent = b.author;
+  document.getElementById('detailTitle').textContent  = b.title;
+  document.getElementById('detailList').textContent   = listLabel;
+
+  const noteBox  = document.getElementById('detailNote');
+  const noteText = document.getElementById('detailNoteText');
+  if (b.note) { noteText.textContent = b.note; noteBox.classList.remove('hidden'); }
+  else          { noteBox.classList.add('hidden'); }
+
+  const loading  = document.getElementById('descLoading');
+  const descText = document.getElementById('descText');
+  loading.style.color = '#888';
+  loading.textContent = '⏳ Beschreibung wird geladen…';
+  loading.classList.remove('hidden');
+  descText.classList.add('hidden');
+  descText.textContent = '';
+  document.getElementById('detailOverlay').classList.remove('hidden');
+
+  if (b.desc) {
+    loading.classList.add('hidden');
+    descText.textContent = b.desc;
+    descText.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    const data = await apiFetch('/api/describe', {
+      method: 'POST',
+      body: JSON.stringify({ author: b.author, title: b.title })
+    });
+    if (data.description) {
+      b.desc = data.description;
+      // Persist desc to server
+      await apiFetch(`/api/books/${b.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ author: b.author, title: b.title, list: b.list, note: b.note, desc: b.desc })
+      });
+      loading.classList.add('hidden');
+      descText.textContent = b.desc;
+      descText.classList.remove('hidden');
+      renderBoard(); // refresh green tag
+    } else {
+      loading.textContent = '⚠️ Keine Beschreibung gefunden.';
+    }
+  } catch(e) {
+    loading.textContent = `⚠️ Fehler: ${e.message}`;
+  }
+}
+
+function closeDetailModal() {
+  document.getElementById('detailOverlay').classList.add('hidden');
+  detailBookId = null;
+}
+
+function openEditFromDetail() {
+  const id = detailBookId;
+  closeDetailModal();
+  if (id) openEditModal(id);
+}
+
+// ── Edit / Add modal ──────────────────────────────────────────────────────────
+function populateListSelect(selected) {
+  document.getElementById('fList').innerHTML = LISTS.map(l =>
+    `<option value="${l.id}" ${l.id === selected ? 'selected' : ''}>${l.label}</option>`).join('');
+}
+
+function openAddModal(listId) {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'Buch hinzufügen';
+  document.getElementById('fAuthor').value = '';
+  document.getElementById('fTitle').value  = '';
+  document.getElementById('fNote').value   = '';
+  populateListSelect(listId || 'wishlist');
+  document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+function openEditModal(id) {
+  const b = books.find(x => x.id === id);
+  if (!b) return;
+  editingId = id;
+  document.getElementById('modalTitle').textContent = 'Buch bearbeiten';
+  document.getElementById('fAuthor').value = b.author;
+  document.getElementById('fTitle').value  = b.title;
+  document.getElementById('fNote').value   = b.note || '';
+  populateListSelect(b.list);
+  document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.add('hidden');
+  editingId = null;
+}
+
+async function saveBook() {
+  const author = document.getElementById('fAuthor').value.trim();
+  const title  = document.getElementById('fTitle').value.trim();
+  const list   = document.getElementById('fList').value;
+  const note   = document.getElementById('fNote').value.trim();
+  if (!author || !title) { alert('Bitte Autor und Titel ausfüllen.'); return; }
+
+  if (editingId) {
+    const b = books.find(x => x.id === editingId);
+    const updated = await apiFetch(`/api/books/${editingId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ author, title, list, note, desc: b?.desc || '' })
+    });
+    Object.assign(b, updated);
+  } else {
+    const created = await apiFetch('/api/books', {
+      method: 'POST',
+      body: JSON.stringify({ author, title, list, note })
+    });
+    books.push(created);
+  }
+  closeModal();
+  renderAll();
+}
+
+async function deleteBook(id) {
+  if (!confirm('Buch wirklich löschen?')) return;
+  await apiFetch(`/api/books/${id}`, { method: 'DELETE' });
+  books = books.filter(b => b.id !== id);
+  renderAll();
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const rows = [['Autor','Titel','Liste','Notiz']];
+  books.forEach(b => {
+    const label = LISTS.find(l => l.id === b.list)?.label || b.list;
+    rows.push([b.author, b.title, label, b.note || '']);
+  });
+  const csv = rows.map(r => r.map(c => '"' + (c||'').replace(/"/g,'""') + '"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}));
+  a.download = 'meine_buecher.csv';
+  a.click();
+}
+
+init();
+</script>
+</body>
+</html>

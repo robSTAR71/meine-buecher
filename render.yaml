@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: meine-buecher
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    disk:
+      name: buecher-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_PATH
+        value: /data/buecher.db
+      - key: ANTHROPIC_API_KEY
+        sync: false   # du trägst den Wert manuell im Render-Dashboard ein
