@@ -1,83 +1,79 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'buecher.json');
 
-// ── Simple JSON database ──────────────────────────────────────────────────────
-function loadDb() {
-  if (fs.existsSync(DB_PATH)) {
-    try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); } catch(e) {}
-  }
-  return { books: [], nextId: 1 };
-}
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rhiasxsxxhqvjowsgzro.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 
-function saveDb(data) {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-}
-
-function getDb() {
-  if (!getDb._cache) getDb._cache = loadDb();
-  // Seed if empty
-  if (getDb._cache.books.length === 0) {
-    for (const b of DEFAULT_BOOKS) {
-      getDb._cache.books.push({ id: getDb._cache.nextId++, ...b, note: '', desc: '' });
+function sbFetch(path, opts = {}) {
+  return fetch(`${SUPABASE_URL}/rest/v1${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Prefer': 'return=representation',
+      ...(opts.headers || {})
     }
-    saveDb(getDb._cache);
-  }
-  return getDb._cache;
+  });
 }
 
-// ── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── Seed on first run ─────────────────────────────────────────────────────────
+async function seedIfEmpty() {
+  const res = await sbFetch('/books?select=id&limit=1');
+  const data = await res.json();
+  if (!Array.isArray(data) || data.length > 0) return;
+  console.log('Seeding database...');
+  await sbFetch('/books', {
+    method: 'POST',
+    body: JSON.stringify(DEFAULT_BOOKS.map(b => ({ ...b, note: '', description: '' })))
+  });
+  console.log('Seeding done.');
+}
+
 // ── Book API ──────────────────────────────────────────────────────────────────
-app.get('/api/books', (req, res) => {
-  res.json(getDb().books);
+app.get('/api/books', async (req, res) => {
+  const r = await sbFetch('/books?order=id.asc');
+  res.status(r.status).json(await r.json());
 });
 
-app.post('/api/books', (req, res) => {
-  const { author, title, list, note } = req.body;
+app.post('/api/books', async (req, res) => {
+  const { author, title, list, note, rating } = req.body;
   if (!author || !title) return res.status(400).json({ error: 'author and title required' });
-  const data = getDb();
-  const book = { id: data.nextId++, author, title, list: list || 'wishlist', note: note || '', desc: '' };
-  data.books.push(book);
-  saveDb(data);
-  res.json(book);
+  const r = await sbFetch('/books', {
+    method: 'POST',
+    body: JSON.stringify({ author, title, list: list || 'wishlist', note: note || '', description: '', rating: rating || null })
+  });
+  const data = await r.json();
+  res.status(r.status).json(Array.isArray(data) ? data[0] : data);
 });
 
-app.put('/api/books/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const { author, title, list, note, desc } = req.body;
-  const data = getDb();
-  const book = data.books.find(b => b.id === id);
-  if (!book) return res.status(404).json({ error: 'not found' });
-  Object.assign(book, { author, title, list, note: note ?? '', desc: desc ?? '' });
-  saveDb(data);
-  res.json(book);
+app.put('/api/books/:id', async (req, res) => {
+  const { author, title, list, note, desc, description, rating } = req.body;
+  const r = await sbFetch(`/books?id=eq.${req.params.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ author, title, list, note: note ?? '', description: description ?? desc ?? '', rating: rating ?? null })
+  });
+  const data = await r.json();
+  res.status(r.status).json(Array.isArray(data) ? data[0] : data);
 });
 
-app.delete('/api/books/:id', (req, res) => {
-  const id = parseInt(req.params.id);
-  const data = getDb();
-  data.books = data.books.filter(b => b.id !== id);
-  saveDb(data);
-  res.json({ ok: true });
+app.delete('/api/books/:id', async (req, res) => {
+  const r = await sbFetch(`/books?id=eq.${req.params.id}`, { method: 'DELETE' });
+  res.status(r.status).json({ ok: true });
 });
 
 // ── Anthropic Proxy ───────────────────────────────────────────────────────────
 app.post('/api/describe', async (req, res) => {
   const { author, title } = req.body;
   if (!author || !title) return res.status(400).json({ error: 'author and title required' });
-
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' });
-
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -104,7 +100,10 @@ app.post('/api/describe', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`Bücher-App läuft auf Port ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`Bücher-App läuft auf Port ${PORT}`);
+  await seedIfEmpty();
+});
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
 const DEFAULT_BOOKS = [
