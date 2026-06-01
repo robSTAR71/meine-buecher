@@ -280,11 +280,13 @@ async function openDetailModal(id) {
 
   // Cover
   const coverWrap = document.getElementById('detailCoverWrap');
-  if (b.cover_url) {
+  if (b.cover_url && b.cover_url !== 'none') {
     coverWrap.innerHTML = `<img class="cover-large" src="${b.cover_url}" alt="Cover" onerror="this.parentElement.innerHTML='<div class=cover-large-placeholder>📖</div>'">`;
+  } else if (!b.cover_url) {
+    coverWrap.innerHTML = '<div class="cover-large-placeholder">⏳</div>';
+    fetchCover(b);
   } else {
     coverWrap.innerHTML = '<div class="cover-large-placeholder">📖</div>';
-    fetchCover(b);
   }
 
   const noteBox  = document.getElementById('detailNote');
@@ -522,15 +524,34 @@ async function drop(e, listId) {
 
 async function fetchCover(b) {
   try {
-    // Search Open Library
-    const query = encodeURIComponent(`${b.title} ${b.author.split(',')[0]}`);
-    const res = await fetch(`https://openlibrary.org/search.json?q=${query}&limit=1&fields=cover_i`);
-    const data = await res.json();
-    const coverId = data?.docs?.[0]?.cover_i;
-    if (!coverId) return;
-    const url = `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
+    // Strategy 1: title + first author lastname
+    const lastName = b.author.split(',')[0].trim();
+    const queries = [
+      `${b.title} ${lastName}`,
+      b.title,
+      `${b.title} ${b.author}`
+    ];
 
-    // Save to server
+    let coverId = null;
+    for (const q of queries) {
+      const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=3&fields=cover_i,title`);
+      const data = await res.json();
+      // Find first result with a cover
+      const match = data?.docs?.find(d => d.cover_i);
+      if (match?.cover_i) { coverId = match.cover_i; break; }
+    }
+
+    if (!coverId) {
+      // Mark as no cover found so we don't retry every time
+      b.cover_url = 'none';
+      await apiFetch(`/api/books/${b.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ author: b.author, title: b.title, list: b.list, note: b.note, description: b.description || '', rating: b.rating || null, cover_url: 'none' })
+      });
+      return;
+    }
+
+    const url = `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
     b.cover_url = url;
     await apiFetch(`/api/books/${b.id}`, {
       method: 'PUT',
