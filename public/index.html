@@ -64,6 +64,12 @@
   .star-select { display: flex; gap: 6px; margin-top: 4px; }
   .star-select span { font-size: 1.4rem; cursor: pointer; color: #444; transition: color 0.15s; }
   .star-select span.on { color: #f59e0b; }
+  .book-cover { width: 80px; height: 115px; object-fit: cover; border-radius: 5px; flex-shrink: 0; background: #0f3460; }
+  .book-cover-placeholder { width: 80px; height: 115px; background: #0f3460; border-radius: 5px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; color: #333; }
+  .book-card-inner { display: flex; gap: 10px; align-items: flex-start; }
+  .book-card-text { flex: 1; min-width: 0; }
+  .cover-large { width: 120px; height: 175px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+  .cover-large-placeholder { width: 120px; height: 175px; background: #0f3460; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: #333; }
 </style>
 </head>
 <body>
@@ -89,8 +95,9 @@
 <!-- Detail Modal -->
 <div class="modal-overlay hidden" id="detailOverlay">
   <div class="modal" style="max-width:500px">
-    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
-      <div style="flex:1">
+    <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px">
+      <div id="detailCoverWrap"></div>
+      <div style="flex:1;min-width:0">
         <div id="detailAuthor" style="font-size:0.75rem;color:#e94560;font-weight:700;text-transform:uppercase;margin-bottom:4px"></div>
         <div id="detailTitle" style="font-size:1.15rem;font-weight:700;line-height:1.3"></div>
         <div id="detailList" style="font-size:0.75rem;color:#888;margin-top:4px"></div>
@@ -256,6 +263,15 @@ async function openDetailModal(id) {
   const ratingEl = document.getElementById('detailRating');
   ratingEl.textContent = b.rating ? '★'.repeat(b.rating) + '☆'.repeat(5-b.rating) : '';
 
+  // Cover
+  const coverWrap = document.getElementById('detailCoverWrap');
+  if (b.cover_url) {
+    coverWrap.innerHTML = `<img class="cover-large" src="${b.cover_url}" alt="Cover" onerror="this.parentElement.innerHTML='<div class=cover-large-placeholder>📖</div>'">`;
+  } else {
+    coverWrap.innerHTML = '<div class="cover-large-placeholder">📖</div>';
+    fetchCover(b);
+  }
+
   const noteBox  = document.getElementById('detailNote');
   const noteText = document.getElementById('detailNoteText');
   if (b.note) { noteText.textContent = b.note; noteBox.classList.remove('hidden'); }
@@ -391,6 +407,30 @@ function exportCSV() {
   a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}));
   a.download = 'meine_buecher.csv';
   a.click();
+}
+
+async function fetchCover(b) {
+  try {
+    // Search Open Library
+    const query = encodeURIComponent(`${b.title} ${b.author.split(',')[0]}`);
+    const res = await fetch(`https://openlibrary.org/search.json?q=${query}&limit=1&fields=cover_i`);
+    const data = await res.json();
+    const coverId = data?.docs?.[0]?.cover_i;
+    if (!coverId) return;
+    const url = `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
+
+    // Save to server
+    b.cover_url = url;
+    await apiFetch(`/api/books/${b.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ author: b.author, title: b.title, list: b.list, note: b.note, description: b.description || '', rating: b.rating || null, cover_url: url })
+    });
+
+    // Update detail modal if still open
+    const coverWrap = document.getElementById('detailCoverWrap');
+    if (coverWrap) coverWrap.innerHTML = `<img class="cover-large" src="${url}" alt="Cover" onerror="this.parentElement.innerHTML='<div class=cover-large-placeholder>📖</div>'">`;
+    renderBoard();
+  } catch(e) { console.log('Cover fetch failed:', e); }
 }
 
 let selectedRating = null;

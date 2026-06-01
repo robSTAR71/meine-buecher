@@ -47,17 +47,17 @@ app.post('/api/books', async (req, res) => {
   if (!author || !title) return res.status(400).json({ error: 'author and title required' });
   const r = await sbFetch('/books', {
     method: 'POST',
-    body: JSON.stringify({ author, title, list: list || 'wishlist', note: note || '', description: '', rating: rating || null })
+    body: JSON.stringify({ author, title, list: list || 'wishlist', note: note || '', description: '', rating: rating || null, cover_url: null })
   });
   const data = await r.json();
   res.status(r.status).json(Array.isArray(data) ? data[0] : data);
 });
 
 app.put('/api/books/:id', async (req, res) => {
-  const { author, title, list, note, desc, description, rating } = req.body;
+  const { author, title, list, note, desc, description, rating, cover_url } = req.body;
   const r = await sbFetch(`/books?id=eq.${req.params.id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ author, title, list, note: note ?? '', description: description ?? desc ?? '', rating: rating ?? null })
+    body: JSON.stringify({ author, title, list, note: note ?? '', description: description ?? desc ?? '', rating: rating ?? null, cover_url: cover_url ?? undefined })
   });
   const data = await r.json();
   res.status(r.status).json(Array.isArray(data) ? data[0] : data);
