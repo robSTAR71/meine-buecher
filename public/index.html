@@ -70,6 +70,10 @@
   .book-card-text { flex: 1; min-width: 0; }
   .cover-large { width: 120px; height: 175px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
   .cover-large-placeholder { width: 120px; height: 175px; background: #0f3460; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: #333; }
+  .book-card.dragging { opacity: 0.4; transform: scale(0.97); }
+  .col-body.drag-over { background: rgba(233,69,96,0.08); border-radius: 8px; outline: 2px dashed #e94560; }
+  .book-card { cursor: grab; }
+  .book-card:active { cursor: grabbing; }
   .upload-zone { border: 2px dashed #333; border-radius: 10px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.15s; color: #666; font-size: 0.82rem; margin-bottom: 14px; }
   .upload-zone:hover { border-color: #e94560; color: #aaa; background: #1a2a3e; }
   .upload-zone.dragover { border-color: #e94560; background: #1a2a3e; }
@@ -237,7 +241,7 @@ function renderBoard() {
     if (q) items = items.filter(b =>
       b.author.toLowerCase().includes(q) || b.title.toLowerCase().includes(q));
     const cards = items.map(b => `
-      <div class="book-card" onclick="openDetailModal(${b.id})">
+      <div class="book-card" draggable="true" ondragstart="dragStart(event,${b.id})" ondragend="dragEnd(event)" onclick="openDetailModal(${b.id})">
         <div class="book-author">${esc(b.author)}</div>
         <div class="book-title">${esc(b.title)}</div>
         ${b.note ? '<span class="note-tag">💬 Notiz</span>' : ''}
@@ -253,7 +257,7 @@ function renderBoard() {
         <div class="col-title" style="color:${list.color}">${list.label}</div>
         <div class="col-count">${items.length}</div>
       </div>
-      <div class="col-body">
+      <div class="col-body" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop(event,'${list.id}')">
         ${cards}
         <button class="add-card-btn" onclick="openAddModal('${list.id}')">+ Buch hinzufügen</button>
       </div>
@@ -468,6 +472,52 @@ async function handleImageUpload(file) {
   } finally {
     document.getElementById('scanningMsg').style.display = 'none';
   }
+}
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+let draggedId = null;
+
+function dragStart(e, id) {
+  draggedId = id;
+  setTimeout(() => e.target.classList.add('dragging'), 0);
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function dragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.col-body').forEach(c => c.classList.remove('drag-over'));
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function dragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function drop(e, listId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!draggedId) return;
+
+  const b = books.find(x => x.id === draggedId);
+  if (!b || b.list === listId) return;
+
+  b.list = listId;
+  renderAll();
+
+  try {
+    await apiFetch(`/api/books/${draggedId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ author: b.author, title: b.title, list: listId, note: b.note || '', description: b.description || '', rating: b.rating || null, cover_url: b.cover_url || null })
+    });
+  } catch(e) {
+    console.error('Move failed:', e);
+  }
+  draggedId = null;
 }
 
 async function fetchCover(b) {
