@@ -100,6 +100,55 @@ app.post('/api/describe', async (req, res) => {
   }
 });
 
+// ── Book identification from image ────────────────────────────────────────────
+app.post('/api/identify-book', async (req, res) => {
+  const { image, mediaType } = req.body;
+  if (!image) return res.status(400).json({ error: 'image required' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' });
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image }
+            },
+            {
+              type: 'text',
+              text: 'Erkenne den Buchtitel und Autor auf diesem Bild. Antworte NUR mit einem JSON-Objekt: {"author": "NACHNAME, Vorname", "title": "Buchtitel"}. Wenn du es nicht erkennen kannst, antworte mit {"author": "", "title": ""}.'
+            }
+          ]
+        }]
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) return res.status(502).json({ error: data?.error?.message || 'API error' });
+    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      res.json(parsed);
+    } catch {
+      res.json({ author: '', title: '' });
+    }
+  } catch(e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, async () => {
   console.log(`Bücher-App läuft auf Port ${PORT}`);
   await seedIfEmpty();

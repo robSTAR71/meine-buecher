@@ -70,6 +70,11 @@
   .book-card-text { flex: 1; min-width: 0; }
   .cover-large { width: 120px; height: 175px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
   .cover-large-placeholder { width: 120px; height: 175px; background: #0f3460; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: #333; }
+  .upload-zone { border: 2px dashed #333; border-radius: 10px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.15s; color: #666; font-size: 0.82rem; margin-bottom: 14px; }
+  .upload-zone:hover { border-color: #e94560; color: #aaa; background: #1a2a3e; }
+  .upload-zone.dragover { border-color: #e94560; background: #1a2a3e; }
+  .upload-preview { width: 100%; max-height: 160px; object-fit: contain; border-radius: 8px; margin-bottom: 10px; display: block; }
+  .scanning-msg { color: #e94560; font-size: 0.8rem; font-style: italic; margin-bottom: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -124,6 +129,12 @@
 <div class="modal-overlay hidden" id="modalOverlay">
   <div class="modal">
     <h2 id="modalTitle">Buch hinzufügen</h2>
+    <div id="uploadZone" class="upload-zone" onclick="document.getElementById('coverUpload').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
+      📷 Screenshot oder Foto hochladen — Autor & Titel werden automatisch erkannt
+      <input type="file" id="coverUpload" accept="image/*" style="display:none" onchange="handleImageUpload(this.files[0])">
+    </div>
+    <img id="uploadPreview" class="upload-preview" style="display:none">
+    <div id="scanningMsg" class="scanning-msg" style="display:none">🔍 Buch wird erkannt…</div>
     <div class="form-group">
       <label>Autor</label>
       <input type="text" id="fAuthor" placeholder="z.B. GLATTAUER, Daniel">
@@ -341,6 +352,9 @@ function openAddModal(listId) {
   document.getElementById('fTitle').value  = '';
   document.getElementById('fNote').value   = '';
   selectedRating = null; renderStars();
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('scanningMsg').style.display = 'none';
+  document.getElementById('coverUpload').value = '';
   populateListSelect(listId || 'wishlist');
   document.getElementById('modalOverlay').classList.remove('hidden');
 }
@@ -407,6 +421,53 @@ function exportCSV() {
   a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}));
   a.download = 'meine_buecher.csv';
   a.click();
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) handleImageUpload(file);
+}
+
+async function handleImageUpload(file) {
+  if (!file) return;
+
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('uploadPreview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+
+  // Show scanning message
+  document.getElementById('scanningMsg').style.display = 'block';
+
+  try {
+    // Convert to base64
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result.split(',')[1]);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+    // Call server to identify book
+    const res = await apiFetch('/api/identify-book', {
+      method: 'POST',
+      body: JSON.stringify({ image: base64, mediaType: file.type })
+    });
+
+    if (res.author) document.getElementById('fAuthor').value = res.author;
+    if (res.title)  document.getElementById('fTitle').value  = res.title;
+
+  } catch(e) {
+    console.error('Book identification failed:', e);
+  } finally {
+    document.getElementById('scanningMsg').style.display = 'none';
+  }
 }
 
 async function fetchCover(b) {
